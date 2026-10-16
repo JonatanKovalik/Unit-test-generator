@@ -1,0 +1,3 @@
+# Runtime: none (standard library only)
+# Development / running generated tests:
+pytest>=7

@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "unittest-gen"
+version = "0.1.0"
+description = "Automated pytest unit-test generator for Python source files"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[project.scripts]
+unittest-gen = "unittest_gen.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["unittest_gen*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
