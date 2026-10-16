@@ -63,10 +63,24 @@ def _param_names(plan: FunctionPlan) -> List[str]:
     return [p.param.name for p in plan.params]
 
 
+def _call_args(plan: FunctionPlan) -> str:
+    """Call arguments for a test body; keyword-only params render as name=name."""
+    parts = []
+    for pp in plan.params:
+        name = pp.param.name
+        parts.append(f"{name}={name}" if pp.param.kind == "keyword_only" else name)
+    return ", ".join(parts)
+
+
 def _case_id(case: ProbeCase) -> str:
     if case.edge_param:
         return f"{case.edge_param}={case.label}"
     return case.label or case.call_expr
+
+
+def _row_values(case: ProbeCase) -> str:
+    """Positional value exprs for a pytest.param row, in parametrize column order."""
+    return ", ".join(case.params_expr)
 
 
 def _parametrize(names: List[str], rows: List[str], indent: str) -> List[str]:
@@ -89,7 +103,7 @@ def _parametrize(names: List[str], rows: List[str], indent: str) -> List[str]:
 def _snapshot_assertion(call: str, outcome, indent: str, extra_imports: Set[str],
                         importable: Set[str]) -> List[str]:
     """Assertion lines for one observed outcome."""
-    if outcome is None:
+    if outcome is None or outcome.status in ("timeout", "error"):
         return [f"{indent}pytest.skip(\"call could not be probed\")",
                 f"{indent}{call}"]
     if outcome.status == "raise":
@@ -149,7 +163,8 @@ def _render_snapshot(plan: FunctionPlan, cases: List[ProbeCase], importable: Set
         desc = f"raises {h.outcome.exc_name}"
     else:
         desc = h.outcome.literal or h.outcome.class_name or h.outcome.status
-    lines.append(f'{ind}    """{call_of(h)} -> {desc}"""')
+    doc = f"{call_of(h)} -> {desc}".replace('"""', '\\"\\"\\"')
+    lines.append(f'{ind}    """{doc}"""')
     lines += _snapshot_assertion(call_of(h), h.outcome, ind + "    ", extra_imports, importable)
     blocks.append("\n".join(lines))
 
@@ -162,13 +177,13 @@ def _render_snapshot(plan: FunctionPlan, cases: List[ProbeCase], importable: Set
             note = ""
             if exc_expr == "Exception" and case.outcome.exc_qualname:
                 note = f"  # {case.outcome.exc_qualname}"
-            rows.append(f"pytest.param({case.call_expr}, {exc_expr}, id=\"{_case_id(case)}\"),{note}")
+            rows.append(f"pytest.param({_row_values(case)}, {exc_expr}, id=\"{_case_id(case)}\"),{note}")
         lines = _parametrize(names + [exc_col], rows, ind)
         sig = ", ".join(["self"] + names + [exc_col])
         lines.append(f"{ind}def test_rejects_edge_inputs({sig}):")
         lines.append(f'{ind}    """Rejected boundary/invalid inputs raise a clear error."""')
         lines.append(f"{ind}    with pytest.raises({exc_col}):")
-        args = ", ".join(names)
+        args = _call_args(plan)
         lines.append(f"{ind}        {invoke(f'{call_prefix}({args})')}")
         blocks.append("\n".join(lines))
 
@@ -176,14 +191,14 @@ def _render_snapshot(plan: FunctionPlan, cases: List[ProbeCase], importable: Set
     if returns_lit:
         exp_col = _expected_col(names)
         rows = [
-            f'pytest.param({case.call_expr}, {case.outcome.literal}, id="{_case_id(case)}"),'
+            f'pytest.param({_row_values(case)}, {case.outcome.literal}, id="{_case_id(case)}"),'
             for case in returns_lit[:MAX_EDGE_ROWS]
         ]
         lines = _parametrize(names + [exp_col], rows, ind)
         sig = ", ".join(["self"] + names + [exp_col])
         lines.append(f"{ind}def test_accepts_edge_inputs({sig}):")
         lines.append(f'{ind}    """Boundary inputs produce defined results."""')
-        args = ", ".join(names)
+        args = _call_args(plan)
         lines.append(f"{ind}    assert {invoke(f'{call_prefix}({args})')} == {exp_col}")
         blocks.append("\n".join(lines))
 
@@ -196,25 +211,25 @@ def _render_snapshot(plan: FunctionPlan, cases: List[ProbeCase], importable: Set
             if cls not in dir(builtins):
                 cls = "object"
             rows.append(
-                f'pytest.param({case.call_expr}, {cls}, id="{_case_id(case)}"),'
+                f'pytest.param({_row_values(case)}, {cls}, id="{_case_id(case)}"),'
             )
         lines = _parametrize(names + [type_col], rows, ind)
         sig = ", ".join(["self"] + names + [type_col])
         lines.append(f"{ind}def test_accepts_edge_inputs_returns_typed({sig}):")
         lines.append(f'{ind}    """Boundary inputs return a usable result (type-checked)."""')
-        args = ", ".join(names)
+        args = _call_args(plan)
         lines.append(f"{ind}    assert isinstance({invoke(f'{call_prefix}({args})')}, {type_col})")
         blocks.append("\n".join(lines))
 
     # --- inputs that could not be probed (timeout / internal error) ---
     if skipped:
-        rows = [f'pytest.param({case.call_expr}, id="{_case_id(case)}"),'
+        rows = [f'pytest.param({_row_values(case)}, id="{_case_id(case)}"),'
                 for case in skipped[:MAX_EDGE_ROWS]]
         lines = _parametrize(names, rows, ind)
         sig = ", ".join(["self"] + names)
         lines.append(f"{ind}@pytest.mark.skip(reason=\"call timed out or errored during generation\")")
         lines.append(f"{ind}def test_edge_inputs_unprobed({sig}):")
-        args = ", ".join(names)
+        args = _call_args(plan)
         lines.append(f"{ind}    {invoke(f'{call_prefix}({args})')}")
         blocks.append("\n".join(lines))
 
@@ -252,10 +267,11 @@ def _render_scaffold(plan: FunctionPlan, cases: List[ProbeCase]) -> List[str]:
         seen = set()
         rows = []
         for case in edge_cases:
-            if case.call_expr in seen:
+            key = tuple(case.params_expr)
+            if key in seen:
                 continue
-            seen.add(case.call_expr)
-            rows.append(f'pytest.param({case.call_expr}, id="{_case_id(case)}"),')
+            seen.add(key)
+            rows.append(f'pytest.param({_row_values(case)}, id="{_case_id(case)}"),')
             if len(rows) >= MAX_EDGE_ROWS:
                 break
         if rows:
@@ -267,7 +283,7 @@ def _render_scaffold(plan: FunctionPlan, cases: List[ProbeCase]) -> List[str]:
             lines.append(f"{ind}    Exercises the call and tolerates any rejection. Review the")
             lines.append(f'{ind}    outcomes and pin the expected contract for your spec.')
             lines.append(f'{ind}    """')
-            args = ", ".join(names)
+            args = _call_args(plan)
             lines.append(f"{ind}    try:")
             lines.append(f"{ind}        result = {invoke(f'{call_prefix}({args})')}")
             lines.append(f"{ind}    except Exception:")

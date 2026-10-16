@@ -96,6 +96,54 @@ def test_private_and_dunder_all_filtered(tmp_path):
     assert "_priv" not in result.test_source
 
 
+def test_keyword_only_params_render_keyword_calls(tmp_path, monkeypatch):
+    src = _write_source(
+        tmp_path,
+        "def greet(name: str, *, punct: str = '!') -> str:\n"
+        "    return name + punct\n",
+    )
+    result = _generate(src)
+    assert "punct=punct" in result.test_source
+    test_file = tmp_path / f"test_{src.stem}.py"
+    test_file.write_text(result.test_source)
+    monkeypatch.syspath_prepend(str(tmp_path))
+    for mod in [m for m in sys.modules if "sample_mod" in m]:
+        del sys.modules[mod]
+    assert _run_generated(tmp_path, test_file) == 0, result.test_source
+
+
+def test_literal_with_triple_quotes_keeps_valid_docstring(tmp_path, monkeypatch):
+    """A return literal containing ''' breaks the generated docstring unless escaped."""
+    src = _write_source(
+        tmp_path,
+        "def marks() -> str:\n    return 'x \"\"\" y'\n",
+    )
+    result = _generate(src)
+    compile(result.test_source, "generated", "exec")
+
+    test_file = tmp_path / f"test_{src.stem}.py"
+    test_file.write_text(result.test_source)
+    monkeypatch.syspath_prepend(str(tmp_path))
+    for mod in [m for m in sys.modules if "sample_mod" in m]:
+        del sys.modules[mod]
+    assert _run_generated(tmp_path, test_file) == 0, result.test_source
+
+
+def test_timed_out_happy_path_emits_skip(tmp_path, monkeypatch):
+    """A call that times out must not produce `assert f() is not None` —
+    the generated test skips instead of hanging or asserting nonsense."""
+    import unittest_gen.executor as ex
+
+    monkeypatch.setattr(ex, "CALL_TIMEOUT_SECONDS", 0.1)
+    src = _write_source(
+        tmp_path,
+        "import time\ndef slow() -> int:\n    time.sleep(30)\n    return 1\n",
+    )
+    result = _generate(src)
+    assert 'pytest.skip("call could not be probed")' in result.test_source
+    assert "assert slow() is not None" not in result.test_source
+
+
 def test_async_function_gets_snapshot(tmp_path, monkeypatch):
     src = _write_source(
         tmp_path,

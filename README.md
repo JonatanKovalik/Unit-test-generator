@@ -20,7 +20,7 @@ $ unittest-gen generate examples/calculator.py
   ✓ wrote examples/test_calculator.py — 16 test(s) across 5 function(s)
 
   → run the generated tests with:
-      python3 -m pytest examples/test_calculator.py -v
+      python -m pytest examples/test_calculator.py -v
 ```
 
 ## Installation
@@ -28,15 +28,57 @@ $ unittest-gen generate examples/calculator.py
 Requires Python ≥ 3.9. No runtime dependencies (standard library only);
 `pytest` is needed to run the generated tests and the project's own suite.
 
-```bash
-pip install .          # installs the `unittest-gen` command
-pip install .[dev]     # additionally installs pytest
+Runs on **Windows** (10+), **macOS** (Apple Silicon and Intel) and **Linux**.
+
+### macOS (zsh — Apple Silicon / Intel)
+
+```zsh
+# from the project root
+python3 -m venv .venv
+source .venv/bin/activate
+
+pip install .             # installs the `unittest-gen` command
+pip install ".[dev]"      # additionally installs pytest (quotes required in zsh)
 ```
 
-Without installing, run the module directly from the project root:
+### Windows (PowerShell)
+
+```powershell
+# from the project root
+py -m venv .venv
+.venv\Scripts\Activate.ps1
+
+pip install .             # installs the `unittest-gen` command
+pip install ".[dev]"      # additionally installs pytest
+```
+
+If activation is blocked by policy:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
+
+Windows `cmd.exe` equivalent: `py -m venv .venv` then `.venv\Scripts\activate.bat`.
+
+### Linux (bash / zsh)
 
 ```bash
-python3 -m unittest_gen generate examples/calculator.py
+python3 -m venv .venv
+source .venv/bin/activate
+
+pip install .             # installs the `unittest-gen` command
+pip install ".[dev]"      # additionally installs pytest
+```
+
+On Debian/Ubuntu you may first need `sudo apt install python3-venv`.
+
+### Run without installing
+
+From the project root:
+
+```bash
+python3 -m unittest_gen generate examples/calculator.py   # macOS / Linux
+python -m unittest_gen generate examples\calculator.py    # Windows
 ```
 
 ## Usage
@@ -108,7 +150,7 @@ source.py ──▶ analyzer ──▶ infer ──▶ executor ──▶ genera
 | --- | --- |
 | `unittest_gen/analyzer.py` | `ast`-based extraction of public functions: params, kinds, defaults, annotations, return types, docstrings, `__all__` filtering |
 | `unittest_gen/infer.py` | Assigns each parameter a kind (`int`, `str`, `list`, …) from annotations → defaults → `isinstance`/method/operator usage in the body → naming conventions; maps kinds to happy-path and edge-case value tables |
-| `unittest_gen/executor.py` | Imports the target module, probes candidate calls under a 2 s `SIGALRM` timeout with muted stdio, records return literals (round-tripped via `ast.literal_eval`) or exception classes; detects non-deterministic results by calling twice |
+| `unittest_gen/executor.py` | Imports the target module, probes candidate calls under a 2 s per-call timeout with muted stdio, records return literals (round-tripped via `ast.literal_eval`) or exception classes; detects non-deterministic results by calling twice |
 | `unittest_gen/generator.py` | Resolves `unknown` parameter types by trial calls, groups outcomes, renders the pytest module |
 | `unittest_gen/cli.py` | `generate` / `inspect` commands, colored status logs, exit codes |
 
@@ -128,10 +170,17 @@ candidate values until the function accepts one.
   out of scope); `@staticmethod`s are covered.
 - Probing runs your code — only generate tests for code you would run.
   Side-effecting or non-deterministic functions get type-level assertions.
+- The per-call timeout uses `SIGALRM` on Unix; on Windows (or off the main
+  thread) it falls back to a daemon thread, so a call that times out keeps
+  running in the background until the generator exits.
 - Planned: fixture detection, coverage-gap analysis, JS/Jest backend.
 
 ## Development
 
 ```bash
-python3 -m pytest tests/ -v   # the tool's own test suite (26 tests)
+python -m pytest tests/ -v   # the tool's own test suite (with venv activated)
 ```
+
+## License
+
+Apache-2.0 — © 2026 JonatanKovalik. See [LICENSE](LICENSE).

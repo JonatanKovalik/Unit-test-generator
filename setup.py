@@ -8,8 +8,10 @@ from setuptools import find_packages, setup
 
 setup(
     name="unittest-gen",
-    version="0.1.0",
+    version="1.0.0",
     description="Automated pytest unit-test generator for Python source files",
+    license="Apache-2.0",
+    author="JonatanKovalik",
     packages=find_packages(include=["unittest_gen", "unittest_gen.*"]),
     python_requires=">=3.9",
     entry_points={"console_scripts": ["unittest-gen=unittest_gen.cli:main"]},

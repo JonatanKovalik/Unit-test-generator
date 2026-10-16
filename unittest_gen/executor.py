@@ -51,13 +51,14 @@ class Outcome:
         return self.status == "raise"
 
 
+def _signals_available() -> bool:
+    """True when an interrupt-based timeout is possible (Unix main thread)."""
+    return threading.current_thread() is threading.main_thread() and hasattr(signal, "SIGALRM")
+
+
 @contextlib.contextmanager
 def _time_limit(seconds: float):
-    """Best-effort SIGALRM timeout (Unix main thread only)."""
-    if threading.current_thread() is not threading.main_thread() or not hasattr(signal, "SIGALRM"):
-        yield
-        return
-
+    """Raise TimeoutError after *seconds* via SIGALRM (Unix main thread only)."""
     def _handler(signum, frame):
         raise TimeoutError(f"call exceeded {seconds}s")
 
@@ -68,6 +69,37 @@ def _time_limit(seconds: float):
     finally:
         signal.setitimer(signal.ITIMER_REAL, 0)
         signal.signal(signal.SIGALRM, previous)
+
+
+def _invoke(func, args, kwargs, is_async):
+    if is_async:
+        return asyncio.run(func(*args, **kwargs))
+    return func(*args, **kwargs)
+
+
+def _threaded_call(func, args, kwargs, is_async, seconds):
+    """Run the call in a daemon thread and time it out after *seconds*.
+
+    Fallback for platforms without SIGALRM (Windows, or non-main threads).
+    On timeout the runaway call keeps running in the background as a daemon
+    until the process exits — the caller is not blocked.
+    """
+    box: Dict[str, Any] = {}
+
+    def runner():
+        try:
+            box["result"] = _invoke(func, args, kwargs, is_async)
+        except BaseException as exc:  # noqa: BLE001 - ferry any failure back
+            box["exc"] = exc
+
+    worker = threading.Thread(target=runner, daemon=True)
+    worker.start()
+    worker.join(seconds)
+    if worker.is_alive():
+        raise TimeoutError(f"call exceeded {seconds}s")
+    if "exc" in box:
+        raise box["exc"]
+    return box.get("result")
 
 
 def load_module(path: Path) -> ModuleType:
@@ -128,13 +160,15 @@ def _exception_name(exc: BaseException) -> str:
 
 def _run_once(func, args, kwargs, is_async) -> Outcome:
     try:
-        with _time_limit(CALL_TIMEOUT_SECONDS):
-            if is_async:
-                result = asyncio.run(func(*args, **kwargs))
-            else:
-                result = func(*args, **kwargs)
+        if _signals_available():
+            with _time_limit(CALL_TIMEOUT_SECONDS):
+                result = _invoke(func, args, kwargs, is_async)
+        else:
+            result = _threaded_call(func, args, kwargs, is_async, CALL_TIMEOUT_SECONDS)
     except TimeoutError:
         return Outcome(status="timeout")
+    except KeyboardInterrupt:
+        raise  # let the user abort; don't record it as a function outcome
     except BaseException as exc:  # noqa: BLE001 - observe any failure mode
         return Outcome(
             status="raise",
@@ -173,6 +207,7 @@ class ProbeCase:
 
     args_expr: List[str]
     kwargs_expr: Dict[str, str]
+    params_expr: List[str] = field(default_factory=list)  # ordered value exprs per plan.params
     args: List[Any] = field(default_factory=list)
     kwargs: Dict[str, Any] = field(default_factory=dict)
     label: str = ""
@@ -191,6 +226,7 @@ def bind(plan, overrides: Dict[str, Any], resolver):
     case = ProbeCase(args_expr=[], kwargs_expr={})
     for pp in plan.params:
         chosen = overrides.get(pp.param.name) or resolver(pp)
+        case.params_expr.append(chosen.expr)
         if pp.param.kind == "positional":
             case.args_expr.append(chosen.expr)
             case.args.append(chosen.value)

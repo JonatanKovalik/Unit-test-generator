@@ -1,18 +1,43 @@
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "unittest-gen"
-version = "0.1.0"
+version = "1.0.0"
 description = "Automated pytest unit-test generator for Python source files"
 readme = "README.md"
 requires-python = ">=3.9"
-license = { text = "MIT" }
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [
+    { name = "JonatanKovalik" },
+]
+keywords = ["pytest", "unit-tests", "testing", "code-generation", "tdd"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Testing",
+    "Topic :: Software Development :: Code Generators",
+]
 dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest>=7"]
+
+[project.urls]
+Homepage = "https://github.com/JonatanKovalik/Unit-test-generator"
+Repository = "https://github.com/JonatanKovalik/Unit-test-generator"
+Issues = "https://github.com/JonatanKovalik/Unit-test-generator/issues"
 
 [project.scripts]
 unittest-gen = "unittest_gen.cli:main"
