@@ -23,6 +23,26 @@ $ unittest-gen generate examples/calculator.py
       python -m pytest examples/test_calculator.py -v
 ```
 
+## Downloading a prebuilt release
+
+No Python required — grab a standalone binary from
+[Releases](https://github.com/JonatanKovalik/Unit-test-generator/releases):
+
+| File | Platform |
+| --- | --- |
+| `unittest-gen-macos-arm64.tar.gz` | macOS Apple Silicon (M1/M2/M3/M4) |
+| `unittest-gen-macos-x86_64.tar.gz` | macOS Intel |
+| `unittest-gen-windows-x86_64.zip` | Windows 10/11 x64 |
+| `unittest-gen-linux-x86_64.tar.gz` | Linux x64 |
+| `unittest-gen.pyz` | Any OS with Python ≥ 3.9 (`python3 unittest-gen.pyz …`) |
+
+Extract the archive, then run `./unittest-gen generate <file.py>`
+(`unittest-gen.exe` on Windows). On macOS you may need to clear the
+download quarantine once: `xattr -d com.apple.quarantine unittest-gen`.
+
+Releases are built automatically by CI when a `v*` tag is pushed
+(see `.github/workflows/release.yml`).
+
 ## Installation
 
 Requires Python ≥ 3.9. No runtime dependencies (standard library only);

@@ -1,0 +1,78 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  pyz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+      - name: Build single-file .pyz (runs on any OS with Python >= 3.9)
+        run: |
+          mkdir -p _pyz dist
+          cp -R unittest_gen _pyz/
+          printf 'import sys\nfrom unittest_gen.cli import main\nsys.exit(main())\n' > _pyz/__main__.py
+          python -m zipapp _pyz -o dist/unittest-gen.pyz -p "/usr/bin/env python3"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pyz
+          path: dist/unittest-gen.pyz
+
+  binaries:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux-x86_64
+          - os: macos-13
+            target: macos-x86_64
+          - os: macos-latest
+            target: macos-arm64
+          - os: windows-latest
+            target: windows-x86_64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: pip install . pyinstaller
+      - name: Build standalone binary
+        run: pyinstaller --onefile --name unittest-gen packaging/unittest_gen_entry.py
+      - name: Archive binary
+        shell: bash
+        run: |
+          cd dist
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            7z a unittest-gen-${{ matrix.target }}.zip unittest-gen.exe
+          else
+            tar -czf unittest-gen-${{ matrix.target }}.tar.gz unittest-gen
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bin-${{ matrix.target }}
+          path: dist/unittest-gen-${{ matrix.target }}.*
+
+  release:
+    needs: [pyz, binaries]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: "*"
+          path: artifacts
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true
