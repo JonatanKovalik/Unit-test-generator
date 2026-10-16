@@ -201,6 +201,20 @@ candidate values until the function accepts one.
 python -m pytest tests/ -v   # the tool's own test suite (with venv activated)
 ```
 
+## Disclaimer
+
+unittest-gen is provided **"as is", without warranty of any kind** —
+express or implied. The authors are not responsible for any damage or
+data loss arising from its use.
+
+**Snapshot mode executes the code it analyzes.** Only run the generator
+on source files you would run yourself — never on untrusted code.
+Generated assertions record *observed* behavior, which may include
+bugs; review them before committing.
+
+Use at your own risk. See [LICENSE](LICENSE) (Apache-2.0) §7–8 for the
+full warranty disclaimer and limitation of liability.
+
 ## License
 
 Apache-2.0 — © 2026 JonatanKovalik. See [LICENSE](LICENSE).
